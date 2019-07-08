@@ -1,1 +1,1 @@
-# R-programming-for-Finance
+# R-programming-for-finance
