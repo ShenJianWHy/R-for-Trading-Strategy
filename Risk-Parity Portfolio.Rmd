@@ -1,0 +1,124 @@
+---
+title: "Risk-Parity Portfolio"
+output: html_document
+number_section: TRUE
+---
+***
+# Inrtoduction
+Practical flaws of Markowitz Model:  
+
+1.variance is not a good risk measure in practice. The solution is use alternative measure for risk, such as downside risk (VaR, CVaR, Sortino ratio). The theoreticians described a number of properties a good risk measure should satify: __a coherent risk measure__. Such properties include monotonicity, sub-additivity, homogeneity, and translational invariance.
+_Ref_ [coherent risk measure](https://en.wikipedia.org/wiki/Coherent_risk_measure)
+
+2.Sensitivity w.r.t estimators (parameter estimation of covariance matrix and mean vector by using historic data). If we use historic data, we introduce another assumption: no time-varying of estimator(and in practice Smaple size cannot be large enough due to lack of stationarity of data). Some improvements includes modeling \(r_t\) conditional on
+\(\mathcal{F_{t-1}}\) and give different weights to observation data like __Garch__ model by not assuming that conditional covariance and conditional mean are constant.
+Solutions include __shrinkage estimators__, __Black-Litterman estimators__ (similar to a reverse engineering: do things backwards).  
+
+3.Lack of diversification (this seems quite contradictive; but in most case we allocate a large weight to only few assets): concentrates risk too much in few assets (2008 financial crisis): solution is the __risk-parity portfolio__.
+
+### Conclusion
+Simply speaking, Markowitz framework is two-objectives optimiation problem: the mean return \(\mathbf{w^T}{\boldsymbol{\mu}}\) and the variance \(\mathbf{w^T}\mathbf{\Sigma}\mathbf{w^T}\). The idea is to find a trade-off between these two regarding how risk-averse a investor is.
+
+__Risk parity portfolio__  
+
+* Less senstive to parameter estimation errors
+* Diversifies the risk
+
+
+# Review: Emprical demonstration of flaws of Markowiz framwork
+
+
+
+\[\begin{array}{} \underset{\mathbf{w}}{maximize} & \boldsymbol{\mu}^T - \lambda {\mathbf{w}^T}{\mathbf{\Sigma w}}\\
+{subject~ to} &\mathbf{1}^T \mathbf{w} = 1\\
+&\mathbf{w}\geqslant 0 \end{array}\]
+
+
+For convience, we define a function to find the solution using _CVXR_  package for convex quadratic optimization problem.
+
+```{r weights_Markowitz, message=FALSE, warning=FALSE}
+library("CVXR")
+weights_Markowitz <- function(lambda, Sigma, mu){
+
+  w <- Variable(length(mu))
+  res <- solve(Problem(Maximize(t(mu) %*% w - lambda*quad_form(w, Sigma)),
+                       constraints = list(w >= 0, sum(w) == 1)))
+  w_Markowitz <- as.matrix(res$getValue(w))
+  rownames(w_Markowitz) <- stock_namels
+  return(w_Markowitz)
+}
+```
+
+```{r Data collection, message=FALSE, warning=FALSE}
+library(xts)
+library(quantmod)
+begin_date <- "2015-01-01"
+end_date <- "2019-07-13"
+stock_namels <- c("AAPL", "IBM", "AMZN", "BAC", "MS", "FDX", "MMM", "KO", "PFE")
+prices <- xts()
+stock = "IBM"
+for (stock in stock_namels){
+  prices <- cbind(prices, Ad(getSymbols(stock, from = begin_date, to = end_date, auto.assign = FALSE)))
+}
+
+plot(prices/rep(prices[1, ], each = nrow(prices)), legend.loc = "topleft",
+     main = "Normalized prices")
+logret <- diff(log(prices))
+colnames(logret) <- stock_namels
+mu <- colMeans(logret, na.rm = TRUE)
+Sigma <- cov(na.omit(logret))
+```
+## Lack of diversification
+Generally, \(\lambda\) is between 0 and 4. The larger \(\lambda\), the more risk-averse.
+
+```{r lack_diversification }
+par(mfrow = c(3,2))
+
+for (lmd in c(0.5,1,2,4,8,10)){
+  barplot(t(weights_Markowitz(lmd, Sigma, mu)), main = "Portfolio allocation", xlab = paste("lambda = ", lmd))
+}
+par(mfrow = c(1,1))
+
+```
+__Remark__: if \(\lambda\) goes to positive infinity, it will converge to GMVP(Global Minimum Variance Portfolio) situation
+
+
+#Risk-Parity Portfolio -- most simple case 
+
+_More complicated case might be added if I study further_
+
+\[\sigma (\mathbf{w}) = \sqrt{\mathbf{w^T}\mathbf{\Sigma}\mathbf{w}}\]
+
+\[= \sum_{i=1}^{N} w_i \frac{\partial\sigma}{\partial w_i}\] 
+\[ =  \sum_{i=1}^{N}\frac{w_i\mathbf{(\Sigma w )}_i}{\sqrt{\mathbf{w^T}\mathbf{\Sigma}\mathbf{w}}}  \]
+
+__Normalized risk contribution__: \(\frac{w_i\mathbf{(\Sigma w )}_i}{\sqrt{\mathbf{w^T}\mathbf{\Sigma}\mathbf{w}}}  \)  
+
+__risk budgeting equations__
+\[w_i \mathbf{(\Sigma w)_i} = b_i \mathbf{w^T\Sigma w}, \qquad  i = 1,...,N \]
+
+__Risk parity portfolio__ is a special case given the budgeting portfolio with  \(b = 1/N\), more specificly, the risk budgeting portfolio (no short position)is:
+\[w_i = \frac {\sqrt{b_i}/\sqrt{\Sigma_{ii}}}{\sum_{k=1}^{N}\sqrt{b_k}/\sqrt{\Sigma_{kk}}}, \qquad i =1, ... , N.  \]
+
+
+
+## Closed-form solution for most simple case
+
+```{r Closed-form solution}
+w_naive <- 1/sqrt(diag(Sigma))
+w_naive <- w_naive/sum(w_naive)
+w_Markowitz_lmd1 <- weights_Markowitz(1 , Sigma, mu)
+w_Markowitz_lmd10 <- weights_Markowitz(10 , Sigma, mu) 
+w_all <-  cbind(w_Markowitz_lmd1,w_Markowitz_lmd10, w_naive)
+colnames(w_all) <- c("Mkwtz_lmd1", "Mkwtz_lmd10","risk-parity" )
+barplot(t(w_all), beside = TRUE, legend = colnames(w_all))
+
+```
+
+# Test for outsample performance (waited to be added)
+
+# Sensitivity to parameters  (particularly to \(\mu\))(waited to be added)
+
+
+
+
